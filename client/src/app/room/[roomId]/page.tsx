@@ -12,13 +12,18 @@ import SourceIcon from "@mui/icons-material/Source";
 import Peoples from "@/app/components/Peoples";
 import ChatIcon from '@mui/icons-material/Chat';
 import SettingsIcon from '@mui/icons-material/Settings';
+
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
+
+import NotificationsIcon from '@mui/icons-material/Notifications';
+
 import FileExplorer from "@/app/components/fileExplorer/FileExplorer";
 import CloseIcon from "@mui/icons-material/Close";
 import { IFileExplorerNode } from "@/interfaces/IFileExplorerNode";
 import { IFile } from "@/interfaces/IFile";
 import { IDataPayload } from "@/interfaces/IDataPayload";
+import { Notification, NotificationType } from "@/interfaces/Notifications";
 import { v4 as uuid } from "uuid";
 import axios, { AxiosError } from "axios";
 import Loading from "@/app/components/loading/Loading";
@@ -28,12 +33,14 @@ import { useDebounceCallback } from 'usehooks-ts';
 import { workspaceApi } from "@/services/workspaceApi";
 import { useAISuggestions } from "@/hooks/useAISuggestion";
 import AiSuggestionSidebar from "@/app/components/aiSidebar/AiSidebar";
+import ActivityLog from "@/app/components/activityLog/activityLog";
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import ThemeSwitcher from "@/app/components/theme/ThemeComp";
 import { ThemeContext } from "@/context/ThemeContext";
 import { FontSizeContext } from "@/context/FontSizeContext";
 import { useSession } from "next-auth/react";
-
+import { getNotifications, addNotification, createNotificationMessage } from '@/services/notificationApi';
+import { getFileLanguage } from "@/app/helpers/getFileLanguage";
 
 const filesContentMap = new Map<string, IFile>();
 
@@ -82,11 +89,16 @@ const Page = () => {
   const [loading, setLoading] = useState(false);
   const [codeOutput, setCodeOutput] = useState("");
   const [codeStatus, setCodeStatus] = useState("");
+
   const [isCollapsed, setIsCollapsed] = useState(false);
 
     const toggleSidebar = () => {
      setIsCollapsed(!isCollapsed);
     };
+
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+
 
   const editorRef = useRef(null);
   const socketRef = useRef<Socket | null>(null);
@@ -95,6 +107,44 @@ const Page = () => {
     enabled: activeTab === 4
   });
   
+
+  const handleAddNotification = async (
+    type: NotificationType,
+    details: { username: string; fileName?: string; folderName?: string; path?: string }
+  ) => {
+    try {
+      console.log("adding notification")
+      const message = createNotificationMessage(type, details);
+      const metadata = {
+        path: details.path,
+        language: details.fileName ? getFileLanguage(details.fileName) : undefined,
+      };
+
+      const newNotification = await addNotification(roomId as string, {
+        type,
+        message,
+        username: details.username,
+        metadata
+      });
+
+      const typedNotification: Notification = {
+        type: newNotification.type as NotificationType,
+        message: newNotification.message,
+        username: newNotification.username,
+        timestamp: new Date(newNotification.timestamp),
+        metadata: newNotification.metadata
+      };
+
+      setNotifications(prev => [typedNotification, ...prev]);
+      
+      socketRef.current?.emit(ACTIONS.NOTIFICATION_ADDED, {
+        roomId,
+        notification: typedNotification
+      });
+    } catch (error) {
+      console.error('Error adding notification:', error);
+    }
+  };
 
   const handleKeyboardShortcuts = (e: KeyboardEvent) => {
     if (e.ctrlKey) {
@@ -118,6 +168,10 @@ const Page = () => {
         case 'u':
           e.preventDefault();
           setActiveTab(1); // Users tab
+          break;
+        case 'l':
+          e.preventDefault();
+          setActiveTab(5); // Notifications tab
           break;
       }
     }
@@ -274,6 +328,11 @@ function handleEditorChange(content: string | undefined) {
           };
     setActiveFile(updatedActiveFile);
     setFiles(updatedOpenFiles);
+    handleAddNotification('FILE_UPDATE', {
+      username: username || 'anonymous',
+      fileName: activeFile.name,
+      path: activeFile.path
+    });
     const dataPayload: IDataPayload = {
       fileExplorerData,
       openFiles: updatedOpenFiles,
@@ -361,7 +420,11 @@ function handleEditorChange(content: string | undefined) {
       language: activeFile.language,
       extension: activeFile.name.split(".")[1],
     };
-
+    handleAddNotification('CODE_EXECUTE', {
+      username: username || 'anonymous',
+      fileName: activeFile.name,
+      path: activeFile.path
+    })
     if (!["cpp", "py", "js"].includes(data.extension)) {
       toast.error(
         `Unsupported programming language (${data.language}). Supported languages are C++, Python, and JavaScript.`
@@ -428,9 +491,10 @@ function handleEditorChange(content: string | undefined) {
         username: usernameFromUrl,
       });
 
-      socketRef.current.on(ACTIONS.JOINED, ({ clients, username }) => {
+      socketRef.current.on(ACTIONS.JOINED, ({ clients, username } ) => {
         if (username !== usernameFromUrl) {
           toast.success(`${username} joined the room.`);
+          handleAddNotification('USER_JOIN', { username });
         }
         setClients(clients);
       });
@@ -444,11 +508,16 @@ function handleEditorChange(content: string | undefined) {
         ACTIONS.DISCONNECTED,
         ({ username, socketId }: { username: string; socketId: string }) => {
           toast.success(`${username} left the room.`);
+          handleAddNotification('USER_LEAVE', { username });
           setClients((prev: any) => {
             return prev.filter((client: any) => client.socketId !== socketId);
           });
         }
       );
+
+      socketRef.current.on(ACTIONS.NOTIFICATION_ADDED, ({ notification} : { notification: Notification }) => {
+        setNotifications(prev => [notification, ...prev]);
+      });
 
       socketRef.current.on(
         ACTIONS.CODE_CHANGE,
@@ -486,6 +555,7 @@ function handleEditorChange(content: string | undefined) {
         socketRef.current.off(ACTIONS.JOINED);
         socketRef.current.off(ACTIONS.DISCONNECTED);
         socketRef.current.off(ACTIONS.CODE_CHANGE);
+        socketRef.current.off(ACTIONS.NOTIFICATION_ADDED);
         socketRef.current.disconnect();
       }
     };
@@ -558,6 +628,7 @@ function handleEditorChange(content: string | undefined) {
             "&:hover": { color: "#ffe200" },
           }}
         />
+
         <button
         onClick={toggleSidebar}
         className="text-white text-lg"
@@ -619,6 +690,63 @@ function handleEditorChange(content: string | undefined) {
         )
       }
       <div className={`coegle_editor h-screen ${isCollapsed ? "md:w-[99.5%]" : "md:w-[95%]"}`}>
+        <NotificationsIcon
+          onClick={() => handleTabChange(5)}
+          sx={{
+            cursor: "pointer",
+            fontSize: "2rem",
+            color: activeTab === 5 ? "#ffe200" : "#8c7f91",
+            "&:hover": { color: "#ffe200" },
+          }}
+        />
+      </div>
+      <div className="w-full md:w-[30%] lg:w-[30%] md:h-screen bg-[#right] border-r border-r-[#605c5c]">
+      {activeTab === 0 && (
+          <FileExplorer
+            fileExplorerData={fileExplorerData}
+            setFileExplorerData={setFileExplorerData}
+            activeFile={activeFile}
+            setActiveFile={setActiveFile}
+            files={files}
+            setFiles={setFiles}
+            isFileExplorerUpdated={isFileExplorerUpdated}
+            setIsFileExplorerUpdated={setIsFileExplorerUpdated}
+            roomId={roomId as string}
+            filesContentMap={filesContentMap}
+            notifications={notifications}
+            setNotifications={setNotifications}
+            socket={socketRef}
+            username={username}
+          />
+        )}
+        {activeTab === 1 && (
+          <Peoples clients={clients} roomId={roomId as string} />
+        )}
+        {activeTab === 2 && username && roomId && (
+          <Chat socket={socketRef.current} username={username} roomId={roomId as string} />
+        )}
+        {activeTab === 3 && (
+          <ThemeSwitcher />
+        )}
+        {activeTab === 4 && (
+          <AiSuggestionSidebar
+            isOpen={true}
+            aiResponse={aiResponse}
+            isLoading={aiLoading}
+          />
+        )}
+        {activeTab === 5 && (
+          <ActivityLog
+            notifications={notifications}
+            onRefresh={async () => {
+              const refreshedNotifications = await getNotifications(roomId as string);
+              setNotifications(refreshedNotifications);
+            }}
+          />
+        )}
+      </div>
+      <div className="coegle_editor w-full md:w-[70%] h-screen">
+
         <div className="h-[5vh] w-full flex overflow-y-auto mb-2">
           {files.map((file, index) => {
             return (

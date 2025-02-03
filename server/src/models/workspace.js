@@ -22,6 +22,31 @@ const filesContentSchema = new mongoose.Schema({
   file: fileSchema
 });
 
+const notificationSchema = new mongoose.Schema({
+  type: {
+    type: String,
+    enum: ['FILE_CREATE', 'FILE_UPDATE', 'FILE_DELETE','FILE_MOVE', 'FOLDER_CREATE', 'FOLDER_DELETE', 'USER_JOIN', 'USER_LEAVE', 'CODE_EXECUTE'],
+    required: true
+  },
+  message: {
+    type: String,
+    required: true
+  },
+  username: {
+    type: String,
+    required: true
+  },
+  timestamp: {
+    type: Date,
+    default: Date.now
+  },
+  metadata: {
+    path: String,           // For file/folder operations
+    language: String,       // For file operations
+    executionStatus: String // For code execution
+  }
+});
+
 const workspaceSchema = new mongoose.Schema({
   roomId: {
     type: String,
@@ -32,6 +57,7 @@ const workspaceSchema = new mongoose.Schema({
   openFiles: [fileSchema],
   activeFile: fileSchema,
   filesContent: [filesContentSchema],
+  notifications: [notificationSchema],
   lastUpdated: {
     type: Date,
     default: Date.now

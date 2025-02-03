@@ -5,8 +5,10 @@ import { Typography } from "@mui/material";
 import { IFileExplorerNode } from "@/interfaces/IFileExplorerNode";
 import { IFile } from "@/interfaces/IFile";
 import { workspaceApi } from "@/services/workspaceApi";
-
-
+import { getFileLanguage } from "@/app/helpers/getFileLanguage";
+import { getNotifications, addNotification, createNotificationMessage } from '@/services/notificationApi';
+import { Notification, NotificationType } from "@/interfaces/Notifications";
+import {ACTIONS} from "@/app/helpers/Actions";
 
 interface FileExplorerProps {
   fileExplorerData: IFileExplorerNode;
@@ -19,6 +21,10 @@ interface FileExplorerProps {
   setIsFileExplorerUpdated: Dispatch<SetStateAction<boolean>>;
   roomId: string;
   filesContentMap: Map<string, IFile>;
+  notifications: Notification[];
+  setNotifications: Dispatch<SetStateAction<Notification[]>>,
+  socket: any,
+  username?: string | null
 }
 
 function FileExplorer({
@@ -31,9 +37,50 @@ function FileExplorer({
   isFileExplorerUpdated,
   setIsFileExplorerUpdated,
   roomId,
-  filesContentMap
+  filesContentMap,
+  notifications,
+  setNotifications,
+  socket,
+  username
 }: FileExplorerProps) {
   const { insertNode, deleteNode, renameNode, moveNode } = useTraverseTree();
+
+ const handleAddNotification = async (
+    type: NotificationType,
+    details: { username: string; fileName?: string; folderName?: string; path?: string }
+  ) => {
+    try {
+      const message = createNotificationMessage(type, details);
+      const metadata = {
+        path: details.path,
+        language: details.fileName ? getFileLanguage(details.fileName) : undefined,
+      };
+
+      const newNotification = await addNotification(roomId as string, {
+        type,
+        message,
+        username: details.username,
+        metadata
+      });
+
+      const typedNotification: Notification = {
+        type: newNotification.type as NotificationType,
+        message: newNotification.message,
+        username: newNotification.username,
+        timestamp: new Date(newNotification.timestamp),
+        metadata: newNotification.metadata
+      };
+
+      setNotifications(prev => [typedNotification, ...prev]);
+      
+      socket.current?.emit(ACTIONS.NOTIFICATION_ADDED, {
+        roomId,
+        notification: typedNotification
+      });
+    } catch (error) {
+      console.error('Error adding notification:', error);
+    }
+  };
 
   const saveWorkspaceChanges = useCallback(async () => {
     const payload = {
@@ -60,15 +107,22 @@ function FileExplorer({
       item,
       isFolder
     );
+    (isFolder)
+    ?handleAddNotification('FOLDER_CREATE', { username: username || 'anonymous', folderName: item })
+    :handleAddNotification('FILE_CREATE', { username: username || 'anonymous', fileName: item });
+
     setFileExplorerData(updatedFileExplorerData);
     setIsFileExplorerUpdated(true);
   };
 
-  const handleDeleteNode = (nodeId: string, nodePath: string) => {
+  const handleDeleteNode = (nodeId: string, nodePath: string , isFolder: boolean) => {
     const updatedFileExplorerData = deleteNode(nodeId, fileExplorerData);
     if (updatedFileExplorerData !== null) {
       setFileExplorerData(updatedFileExplorerData);
 
+      (isFolder)
+    ?handleAddNotification('FOLDER_DELETE', { username: username || 'anonymous', folderName: nodePath })
+    :handleAddNotification('FILE_DELETE', { username: username || 'anonymous', fileName: nodePath });
       const updatedOpenFiles = files.filter((file) => file.path !== nodePath);
       const updatedActiveFile =
         updatedOpenFiles.length > 0
@@ -85,10 +139,12 @@ function FileExplorer({
     }
   };
 
-  const handleRename = (nodeId: string, newName: string) => {
+  const handleRename = (nodeId: string, newName: string, isFolder: boolean) => {
     const updatedFileExplorerData = renameNode(nodeId, newName, fileExplorerData);
     setFileExplorerData(updatedFileExplorerData);
-    
+    (isFolder)
+    ?handleAddNotification('FOLDER_CREATE', { username: username || 'anonymous', folderName: newName })
+    :handleAddNotification('FILE_CREATE', { username: username || 'anonymous', fileName: newName });
     const updatedFiles = files.map(file => {
       if (file.path.includes(nodeId)) {
         const newPath = file.path.replace(file.name, newName);
@@ -105,11 +161,13 @@ function FileExplorer({
     setIsFileExplorerUpdated(true);
   };
 
-  const handleMove = (sourceId: string, targetId: string) => {
+  const handleMove = (sourceId: string, targetId: string, isFolder: boolean) => {
     const updatedFileExplorerData = moveNode(sourceId, targetId, fileExplorerData);
     if (updatedFileExplorerData !== null) {
       setFileExplorerData(updatedFileExplorerData);
-      
+      (isFolder)?handleAddNotification('FOLDER_MOVE', { username: username || 'anonymous', folderName: sourceId })
+      :
+      handleAddNotification('FILE_MOVE', { username: username || 'anonymous', fileName: sourceId });
       const findNewPath = (node: IFileExplorerNode): string | null => {
         if (node.id === sourceId) return node.path;
         for (const child of node.nodes) {

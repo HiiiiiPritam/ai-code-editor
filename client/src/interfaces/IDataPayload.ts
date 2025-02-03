@@ -5,6 +5,7 @@ interface IDataPayload {
   fileExplorerData: IFileExplorerNode;
   activeFile: IFile;
   openFiles: IFile[];
+  notifications?: Notification[];
   codeOutputData?: {
     status: string;
     output: string;

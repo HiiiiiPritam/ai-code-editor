@@ -107,7 +107,7 @@ const AISuggestionsSidebar: React.FC<AISuggestionsSidebarProps> = ({
   );
 
   return (
-    <div className="w-full md:w-[32rem] lg:w-[27rem] h-screen bg-zinc-900 border-l border-zinc-800 overflow-y-auto transition-all duration-300">
+    <div className="w-full md:w-[20rem] lg:w-[25rem] h-screen bg-zinc-900 border-l border-zinc-800 overflow-y-auto transition-all duration-300">
       <div className="sticky top-0 z-10 bg-zinc-900 border-b border-zinc-800 p-4">
         <div className="flex items-center gap-2 text-yellow-400">
           <Sparkles className="w-5 h-5" />
