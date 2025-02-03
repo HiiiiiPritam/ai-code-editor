@@ -27,3 +27,38 @@
   .xterm-viewport::-webkit-scrollbar-thumb {
     background: #1e1e1e!important;
   }
+
+/* Base remote cursor style: a vertical line */
+.remote-cursor {
+  position: relative; /* Allows absolute positioning of the pseudo-elements */
+  border-left: 3px solid red;
+  margin-left: -1px;
+}
+
+/* Create the small red circle above the line */
+.remote-cursor::after {
+  content: "";
+  position: absolute;
+  left: -5px; /* Adjust to center the circle relative to the line */
+  top: -5px;  /* Adjust vertical position as needed */
+  width: 10px;
+  height: 10px;
+  background-color: red;
+  border-radius: 50%;
+}
+
+/* On hover, display a tooltip with the username */
+.remote-cursor:hover::before {
+  content: attr(data-username); /* The username should be passed as data-username attribute */
+  position: absolute;
+  top: -30px; /* Position the tooltip above the circle */
+  left: 10px; /* Adjust horizontal offset */
+  background-color: rgba(0, 0, 0, 0.8);
+  color: white;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  z-index: 10;
+  pointer-events: none; /* Ensures the tooltip doesn't block mouse events */
+}

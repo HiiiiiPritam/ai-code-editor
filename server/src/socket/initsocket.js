@@ -1,8 +1,9 @@
 import { Server } from "socket.io";
 import http from "http";
 import { ACTIONS } from "../constants/actions.js";
-
 import express from "express";
+import {z} from "zod"
+import executeCode from "../controllers/runInContainer.js";
 
 const app = express();
 
@@ -12,6 +13,7 @@ const server = http.createServer(app);
   const userSocketMap = {};
   const userRoomMap = {}; // Maps socket ID to room ID
   const chatMessages = {}; // Maps room ID to chat messages
+  const rateLimiter = new Map();
 
   const getAllConnectedClients = (roomId) => {
     return Array.from(io.sockets.adapter.rooms.get(roomId) || []).map(
@@ -47,6 +49,13 @@ const server = http.createServer(app);
           socketId: socket.id,
         });
       });
+    });
+
+    socket.on(ACTIONS.CURSOR_CHANGE, (data) => {
+      // Data should include: roomId, userId, position, and userna
+      const { roomId, userId, position, username } = data;
+      // Broadcast the cursor change to everyone in the room except the sender
+      socket.to(roomId).emit(ACTIONS.CURSOR_CHANGE, { userId, position, username });
     });
 
     socket.on(ACTIONS.CODE_CHANGE, ({ roomId, payload }) => {
@@ -89,15 +98,37 @@ const server = http.createServer(app);
       // }
     });
 
-    socket.on(ACTIONS.CURSOR_MOVE, ({ roomId, username, position, filePath }) => {
-      socket.broadcast.to(roomId).emit(ACTIONS.CURSOR_MOVE, {
-        username,
-        position,  // { lineNumber, column }
-        filePath,
-      });
-
-      console.log("username", username, "position", position);
+    socket.on(ACTIONS.CURSOR_CHANGE, (data) => {
+      console.log("Received data on backend:", data);
+      // Now destructure:
+      const { roomId, username, position, filePath } = data;
+      console.log("room", roomId, "username", username, "position", position, "filePath", filePath);
+      socket.broadcast.to(roomId).emit(ACTIONS.CURSOR_CHANGE, { username, position, filePath });
     });
+
+    socket.on(ACTIONS.EXECUTE_CODE,async(data)=>{
+      console.log(data)
+      const now=Date.now();
+      const lastExecution=rateLimiter.get(socket.id) || 0;
+      if(now-lastExecution <1000){
+        socket.emit(ACTIONS.CODE_RESULT, {
+          success: false,
+          output: "Please wait before executing more code",
+        });
+        return;
+      }
+      rateLimiter.set(socket.id, now);
+      try {
+        const result = await executeCode(data.language, data.code);
+        // console.log(result)
+        socket.emit(ACTIONS.CODE_RESULT, result);
+      } catch (error) {
+        socket.emit(ACTIONS.CODE_RESULT, {
+          success: false,
+          output: error.message || "Failed to execute code...",
+        });
+      }
+    })
 
     socket.on("disconnecting", () => {
       const rooms = [...socket.rooms];

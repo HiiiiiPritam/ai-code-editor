@@ -53,6 +53,8 @@ const FileExplorerNode = ({
       path: fileExplorerNode.path,
     };
     setActiveFile(file);
+    console.log("file", file.path);
+    
     const existingFile = files.filter(
       (file) => file.path === fileExplorerNode.path
     );
