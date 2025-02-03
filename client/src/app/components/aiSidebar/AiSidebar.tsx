@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sparkles, Bug, Lightbulb, Code, ChevronDown, ChevronUp, CheckCircle } from 'lucide-react';
+import { Sparkles, Bug, Lightbulb, Code, ChevronDown, ChevronUp, CheckCircle, FileText } from 'lucide-react';
 import CodeBlock from './codeBlock';
 
 interface Error {
@@ -22,10 +22,22 @@ interface Practice {
   explanation: string;
 }
 
+interface Documentation {
+  overview: string;
+  functions: {
+    name: string;
+    description: string;
+    params: string[];
+    returns: string;
+  }[];
+  notes: string;
+}
+
 interface AIResponse {
   errors: Error[];
   suggestions: Suggestion[];
   bestPractices: Practice[];
+  documentation: Documentation;
   timestamp: string;
 }
 
@@ -39,7 +51,7 @@ interface AISuggestionsSidebarProps {
 interface SectionProps {
   title: string;
   icon: React.ElementType;
-  type: 'error' | 'suggestion' | 'practice';
+  type: 'error' | 'suggestion' | 'practice' | 'documentation';
   children: React.ReactNode;
   isExpanded: boolean;
   onToggle: () => void;
@@ -49,6 +61,7 @@ interface ExpandedSections {
   errors: boolean;
   suggestions: boolean;
   practices: boolean;
+  documentation: boolean;
 }
 
 const AISuggestionsSidebar: React.FC<AISuggestionsSidebarProps> = ({ 
@@ -57,10 +70,12 @@ const AISuggestionsSidebar: React.FC<AISuggestionsSidebarProps> = ({
   isLoading,
   error 
 }) => {
+  console.log(aiResponse)
   const [expandedSections, setExpandedSections] = useState<ExpandedSections>({
     errors: true,
     suggestions: true,
-    practices: true
+    practices: true,
+    documentation: true
   });
 
   const toggleSection = (section: keyof ExpandedSections): void => {
@@ -86,13 +101,15 @@ const AISuggestionsSidebar: React.FC<AISuggestionsSidebarProps> = ({
         className={`w-full p-3 flex items-center justify-between text-left
           ${type === 'error' ? 'bg-red-900/20' : ''}
           ${type === 'suggestion' ? 'bg-blue-900/20' : ''}
-          ${type === 'practice' ? 'bg-emerald-900/20' : ''}`}
+          ${type === 'practice' ? 'bg-emerald-900/20' : ''}
+          ${type === 'documentation' ? 'bg-purple-900/20' : ''}`}
       >
         <div className="flex items-center gap-2">
           <Icon className={`w-5 h-5 
             ${type === 'error' ? 'text-red-400' : ''}
             ${type === 'suggestion' ? 'text-blue-400' : ''}
-            ${type === 'practice' ? 'text-emerald-400' : ''}`} 
+            ${type === 'practice' ? 'text-emerald-400' : ''}
+            ${type === 'documentation' ? 'text-purple-400' : ''}`} 
           />
           <span className="font-medium text-zinc-100">{title}</span>
         </div>
@@ -128,6 +145,65 @@ const AISuggestionsSidebar: React.FC<AISuggestionsSidebarProps> = ({
           </div>
         ) : aiResponse ? (
           <div className="space-y-6">
+            {aiResponse.documentation && (
+  <Section
+    title="Documentation"
+    icon={FileText}
+    type="documentation"
+    isExpanded={expandedSections.documentation}
+    onToggle={() => toggleSection('documentation')}
+  >
+    <div className="space-y-4">
+      {aiResponse.documentation.overview && (
+        <div className="space-y-2">
+          <h4 className="text-purple-400 font-medium">Overview</h4>
+          <p className="text-sm text-zinc-300">{aiResponse.documentation.overview}</p>
+        </div>
+      )}
+      
+      {aiResponse.documentation.functions.length > 0 && (
+        <div className="space-y-4">
+          <h4 className="text-purple-400 font-medium">Functions</h4>
+          {aiResponse.documentation.functions.map((func, idx) => (
+            <div key={idx} className="space-y-2 border-t border-zinc-800 pt-3">
+              <h5 className="text-zinc-200 font-medium">{func.name}</h5>
+              {func.description && (
+                <p className="text-sm text-zinc-300">{func.description}</p>
+              )}
+              
+              {func.params.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-zinc-400">Parameters:</p>
+                  <ul className="list-disc list-inside space-y-1">
+                    {func.params.map((param, pidx) => (
+                      <li key={pidx} className="text-sm text-zinc-300">{param}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              
+              {func.returns && (
+                <div>
+                  <p className="text-sm font-medium text-zinc-400">Returns:</p>
+                  <p className="text-sm text-zinc-300">{func.returns}</p>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      
+      {aiResponse.documentation.notes && (
+        <div className="space-y-2 border-t border-zinc-800 pt-3">
+          <h4 className="text-purple-400 font-medium">Additional Notes</h4>
+          <p className="text-sm text-zinc-300">{aiResponse.documentation.notes}</p>
+        </div>
+      )}
+    
+                </div>
+              </Section>
+            )}
+
             {aiResponse.errors.length > 0 && (
               <Section
                 title={`Issues Found (${aiResponse.errors.length})`}
@@ -153,7 +229,6 @@ const AISuggestionsSidebar: React.FC<AISuggestionsSidebarProps> = ({
                 ))}
               </Section>
             )}
-
             {aiResponse.suggestions.length > 0 && (
               <Section
                 title={`Suggestions (${aiResponse.suggestions.length})`}
