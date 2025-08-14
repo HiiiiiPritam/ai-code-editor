@@ -366,6 +366,9 @@ const Page = () => {
   };
 
   const handleChangeActiveFile = (file: IFile) => {
+    // Clear all remote cursors when switching files
+    clearAllRemoteCursors();
+    
     setActiveFile(file);
     setActiveFileGlobal(file);
   };
@@ -531,6 +534,16 @@ const Page = () => {
         ({ username, socketId }: { username: string; socketId: string }) => {
           toast.success(`${username} left the room.`);
           handleAddNotification('USER_LEAVE', { username });
+          
+          // Remove user's cursor when they disconnect
+          if (remoteCursorDecorations.current[username]) {
+            const decorations = remoteCursorDecorations.current[username];
+            if (editorRef.current) {
+              (editorRef.current as any).deltaDecorations(decorations, []);
+            }
+            delete remoteCursorDecorations.current[username];
+          }
+          
           setClients((prev: any) => {
             return prev.filter((client: any) => client.socketId !== socketId);
           });
@@ -541,7 +554,7 @@ const Page = () => {
         setNotifications(prev => [notification, ...prev]);
       });
 
-      // NEW: Listen for remote cursor change events
+      // Listen for remote cursor change events
       socketRef.current.on(
         ACTIONS.CURSOR_CHANGE,
         (data: {
@@ -549,21 +562,23 @@ const Page = () => {
           position: monaco.Position;
           filePath: string;
         }) => {
-          console.log(
-            "Received cursor change event: ",
-            data,
-            "activeFile:",
-            activeFileGlobal?.path
-          );
+          console.log("Received cursor change event:", data);
+          console.log("Current user:", username, "Active file:", activeFileGlobal?.path);
+          
           // Ignore our own cursor events
-          console.log(
-            "data.filePath !== activeFileGlobal.path",
-            data.filePath, "!==", activeFileGlobal);
+          if (data.username === username) {
+            console.log("Ignoring own cursor event");
+            return;
+          }
           
-          // if(data.filePath !== activeFileGlobal?.path) return;
-          console.log(username, "!==", data.username,data.username === username );
+          // Only show cursors for the currently active file
+          if (data.filePath !== activeFileGlobal?.path) {
+            console.log("Ignoring cursor for different file:", data.filePath, "vs", activeFileGlobal?.path);
+            return;
+          }
           
-          if (data.username === username) return;
+          console.log("Updating remote cursor for:", data.username);
+          // Update remote cursor position
           updateRemoteCursor(data.username, data.position, data.username);
         }
       );
@@ -604,23 +619,43 @@ const Page = () => {
         socketRef.current.off(ACTIONS.JOINED);
         socketRef.current.off(ACTIONS.DISCONNECTED);
         socketRef.current.off(ACTIONS.CODE_CHANGE);
+        socketRef.current.off(ACTIONS.CURSOR_CHANGE);
         socketRef.current.off(ACTIONS.NOTIFICATION_ADDED);
+        socketRef.current.off(ACTIONS.CODE_RESULT);
+        socketRef.current.off(ACTIONS.LOAD_MESSAGES);
         socketRef.current.disconnect();
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Function to update a remote user's cursor decoration
+  // Function to get user-specific color class
+  const getUserColorClass = (username: string) => {
+    const hash = username.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return `user-${(hash % 4) + 1}`;
+  };
+
   // Function to update a remote user's cursor decoration
   const updateRemoteCursor = (
     remoteUserId: string,
     position: monaco.Position,
     remoteUsername: string
   ) => {
-    if (!editorRef.current || !monacoRef.current) return;
-    console.log("Updating remote cursor for:", remoteUserId, "at", position);
+    if (!editorRef.current || !monacoRef.current) {
+      console.log("Editor or Monaco not ready");
+      return;
+    }
 
+    // Validate position to prevent invalid cursor positions
+    if (!position || !position.lineNumber || !position.column) {
+      console.log("Invalid position:", position);
+      return;
+    }
+
+    console.log(`Updating cursor for ${remoteUsername} at line ${position.lineNumber}, column ${position.column}`);
+
+    const colorClass = getUserColorClass(remoteUsername);
+    
     const newDecorations = [
       {
         range: new monacoRef.current.Range(
@@ -630,63 +665,88 @@ const Page = () => {
           position.column
         ),
         options: {
-          className: "remote-cursor", // Defined in your CSS
-          beforeContentClassName: "remote-cursor-label",
+          className: `remote-cursor ${colorClass}`,
           hoverMessage: { value: `👤 ${remoteUsername}` },
+          afterContentClassName: "remote-cursor-label",
+          after: {
+            content: ` ${remoteUsername}`,
+            inlineClassName: "remote-cursor-inline-label",
+          },
+          stickiness: monacoRef.current.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
         },
       },
     ];
 
-    // Use remoteUserId as the key
+    // Get old decorations for this user
     const oldDecorations = remoteCursorDecorations.current[remoteUserId] || [];
-    console.log("Old Decorations:", oldDecorations);
 
-    const newDecoIds = (editorRef.current as any).deltaDecorations(
-      oldDecorations,
-      newDecorations
-    );
+    try {
+      // Replace old decorations with new ones
+      const newDecoIds = (editorRef.current as any).deltaDecorations(
+        oldDecorations,
+        newDecorations
+      );
 
-    remoteCursorDecorations.current[remoteUserId] = newDecoIds;
-    console.log(
-      "Updated remote cursor for",
-      remoteUserId,
-      "New Decorations:",
-      newDecoIds
-    );
+      // Store new decoration IDs
+      remoteCursorDecorations.current[remoteUserId] = newDecoIds;
+      
+      console.log(`Successfully updated cursor for ${remoteUsername}, decorations:`, newDecoIds);
+    } catch (error) {
+      console.error("Error updating cursor decoration:", error);
+    }
+  };
+
+  // Function to clear all remote cursors (useful when switching files)
+  const clearAllRemoteCursors = () => {
+    if (!editorRef.current) return;
+    
+    Object.keys(remoteCursorDecorations.current).forEach(userId => {
+      const decorations = remoteCursorDecorations.current[userId];
+      (editorRef.current as any).deltaDecorations(decorations, []);
+    });
+    
+    remoteCursorDecorations.current = {};
   };
 
   // When the editor mounts, set up the Monaco instance and add our local cursor listener.
   function handleEditorDidMount(editor: any, monaco: Monaco) {
-    console.log("Monaco Editor mounted");
-
     editorRef.current = editor;
     monacoRef.current = monaco;
 
+    // Throttle cursor position updates to prevent spam
+    let cursorThrottle: NodeJS.Timeout | null = null;
+
     // Listen for local cursor position changes and emit the event.
     editor.onDidChangeCursorPosition((e: any) => {
-      const currentFilePath = activeFileGlobal?.path;
-      console.log(
-        "Local cursor changed:",
-        e.position,
-        "activeFile:",
-        currentFilePath
-      );
+      // Get current file path dynamically (not from closure)
+      const currentFilePath = activeFile?.path;
 
-      // Only emit if a filePath exists
-      if (!currentFilePath) {
-        console.warn("No active file path available!");
+      // Only emit if a filePath exists and position is valid
+      if (!currentFilePath || !e.position?.lineNumber || !e.position?.column) {
+        console.log("Skipping cursor emit - missing data:", { currentFilePath, position: e.position });
         return;
       }
 
-      const payload = {
-        roomId,
-        username,
-        position: e.position,
-        filePath: activeFileGlobal?.path,
-      };
-      console.log("Emitting payload:", payload);
-      socketRef.current?.emit(ACTIONS.CURSOR_CHANGE, payload);
-      
+      // Throttle cursor updates to prevent excessive events
+      if (cursorThrottle) {
+        clearTimeout(cursorThrottle);
+      }
+
+      cursorThrottle = setTimeout(() => {
+        // Double check file path is still valid
+        const latestFilePath = activeFile?.path;
+        if (!latestFilePath) return;
+        
+        const payload = {
+          roomId,
+          username,
+          position: e.position,
+          filePath: latestFilePath,
+        };
+        
+        console.log("Emitting cursor change:", payload);
+        socketRef.current?.emit(ACTIONS.CURSOR_CHANGE, payload);
+      }, 50); // Reduced throttle to 50ms for better responsiveness
     });
   }
 

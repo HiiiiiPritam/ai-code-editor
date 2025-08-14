@@ -7,9 +7,9 @@ export default async function connectDB() {
       return;
     }
 
-    const dbUri = process.env.MONGODB_URL;
+    const dbUri = process.env.MONGODB_URI;
     if (!dbUri) {
-      throw new Error("MONGODB_URL is not defined in environment variables");
+      throw new Error("MONGODB_URI is not defined in environment variables");
     }
 
     await mongoose.connect(dbUri);
