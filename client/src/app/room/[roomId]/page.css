@@ -28,37 +28,96 @@
     background: #1e1e1e!important;
   }
 
-/* Base remote cursor style: a vertical line */
+/* Remote cursor styles for Monaco Editor */
 .remote-cursor {
-  position: relative; /* Allows absolute positioning of the pseudo-elements */
-  border-left: 3px solid red;
-  margin-left: -1px;
+  position: relative !important;
+  background-color: rgba(255, 0, 0, 0.3) !important;
+  border-left: 2px solid #ff0000 !important;
+  min-width: 2px !important;
+  z-index: 10 !important;
 }
 
-/* Create the small red circle above the line */
-.remote-cursor::after {
+/* Cursor indicator at the top */
+.remote-cursor::before {
   content: "";
-  position: absolute;
-  left: -5px; /* Adjust to center the circle relative to the line */
-  top: -5px;  /* Adjust vertical position as needed */
-  width: 10px;
-  height: 10px;
-  background-color: red;
-  border-radius: 50%;
+  position: absolute !important;
+  top: -4px !important;
+  left: -4px !important;
+  width: 8px !important;
+  height: 8px !important;
+  background-color: #ff0000 !important;
+  border-radius: 50% !important;
+  z-index: 11 !important;
+  box-shadow: 0 0 3px rgba(255, 0, 0, 0.8) !important;
 }
 
-/* On hover, display a tooltip with the username */
-.remote-cursor:hover::before {
-  content: attr(data-username); /* The username should be passed as data-username attribute */
-  position: absolute;
-  top: -30px; /* Position the tooltip above the circle */
-  left: 10px; /* Adjust horizontal offset */
-  background-color: rgba(0, 0, 0, 0.8);
-  color: white;
-  font-size: 10px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  white-space: nowrap;
-  z-index: 10;
-  pointer-events: none; /* Ensures the tooltip doesn't block mouse events */
+/* Different colors for different users */
+.remote-cursor.user-1 {
+  border-left-color: #ff0000 !important;
+  background-color: rgba(255, 0, 0, 0.2) !important;
+}
+.remote-cursor.user-1::before {
+  background-color: #ff0000 !important;
+  box-shadow: 0 0 3px rgba(255, 0, 0, 0.8) !important;
+}
+
+.remote-cursor.user-2 {
+  border-left-color: #00ff00 !important;
+  background-color: rgba(0, 255, 0, 0.2) !important;
+}
+.remote-cursor.user-2::before {
+  background-color: #00ff00 !important;
+  box-shadow: 0 0 3px rgba(0, 255, 0, 0.8) !important;
+}
+
+.remote-cursor.user-3 {
+  border-left-color: #0066ff !important;
+  background-color: rgba(0, 102, 255, 0.2) !important;
+}
+.remote-cursor.user-3::before {
+  background-color: #0066ff !important;
+  box-shadow: 0 0 3px rgba(0, 102, 255, 0.8) !important;
+}
+
+.remote-cursor.user-4 {
+  border-left-color: #ff6600 !important;
+  background-color: rgba(255, 102, 0, 0.2) !important;
+}
+.remote-cursor.user-4::before {
+  background-color: #ff6600 !important;
+  box-shadow: 0 0 3px rgba(255, 102, 0, 0.8) !important;
+}
+
+/* User label positioning */
+.remote-cursor-label {
+  position: absolute !important;
+  top: -25px !important;
+  left: -5px !important;
+  background-color: rgba(0, 0, 0, 0.8) !important;
+  color: white !important;
+  font-size: 10px !important;
+  padding: 2px 6px !important;
+  border-radius: 3px !important;
+  white-space: nowrap !important;
+  z-index: 12 !important;
+  pointer-events: none !important;
+}
+
+/* Inline cursor label */
+.remote-cursor-inline-label {
+  background-color: rgba(0, 0, 0, 0.8) !important;
+  color: white !important;
+  font-size: 10px !important;
+  padding: 1px 4px !important;
+  border-radius: 2px !important;
+  margin-left: 2px !important;
+}
+
+/* Make sure cursors are visible in Monaco editor */
+.monaco-editor .view-overlays .current-line ~ .remote-cursor {
+  z-index: 100 !important;
+}
+
+.monaco-editor .decorationsOverviewRuler .remote-cursor {
+  z-index: 100 !important;
 }

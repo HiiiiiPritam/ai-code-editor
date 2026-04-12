@@ -49,11 +49,28 @@ export async function POST(
       );
     }
 
+    // Hash the password
+    const hashedPassword = await hash(password, 12);
+
+    // Create the user
+    const newUser = await User.create({
+      name,
+      email,
+      password: hashedPassword,
+      provider,
+      googleId,
+    });
+
     return NextResponse.json(
       {
         status: 201,
-        message: "User can proceed successfully",
+        message: "User registered successfully",
         success: true,
+        data: {
+          id: newUser._id,
+          name: newUser.name,
+          email: newUser.email,
+        },
       },
       { status: 201 }
     );
